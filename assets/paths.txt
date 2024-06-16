@@ -1,0 +1,8 @@
+assets/books/book1.txt
+assets/books/book2.txt
+assets/books/book3.txt
+assets/books/book4.txt
+assets/books/book5.txt
+assets/books/book6.txt
+assets/books/book7.txt
+assets/books/book8.txt
