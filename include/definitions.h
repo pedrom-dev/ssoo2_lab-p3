@@ -12,7 +12,7 @@
 #define SEARCHER_QUEUE_NAME "/searcherQueue"
 #define SEARCHER_RESPONSE_QUEUE_NAME "/searcherResponseQueue"
 
-#define PAYMENT_QUEUE_NAME "/paymentQueue"
+#define PAYMENT_QUEUE_NAME "/paymentServiceQueue"
 #define PAYMENT_RESPONSE_QUEUE_NAME "/paymentResponseQueue"
 
 #define FREE_USER_SEARCH_LIMIT 100

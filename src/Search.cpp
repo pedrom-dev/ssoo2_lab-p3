@@ -19,7 +19,6 @@ std::atomic<int> totalOccurrences(0); // Variable global para contar las ocurren
 std::atomic<int> premiumBalance(0);
 static std::mutex mtx; // Mutex para proteger la sección crítica
 // Variable de semaforo POSIX llamado paymentSemaphore
-sem_t* paymentSemaphore = sem_open ("/paymentSemaphore", O_CREAT, 0644, 0);
 
 
 Search::Search(searchRequest_t request) {
@@ -139,7 +138,7 @@ void Search::UnlimitedSearchInFile(const std::string& file, const std::string& k
 }
 
 
-void Search::PremiumSearchInFile(const std::string& file, sem_t* sem, mqd_t paymentQueue, mqd_t paymentQueueResponse) {
+void Search::PremiumSearchInFile(const std::string& file, mqd_t paymentQueue, mqd_t paymentQueueResponse) {
     printf("[SEARCHER] Thread (%d) searching in file %s\n", std::this_thread::get_id(), file.c_str());
     std::ifstream inFile(file);
     std::string line;
@@ -163,13 +162,9 @@ void Search::PremiumSearchInFile(const std::string& file, sem_t* sem, mqd_t paym
                         rechargeRequest.user_id = request.user_id;
                         mq_send(paymentQueue, (char*)&rechargeRequest, sizeof(rechargeRequest), 0);
                         std::cout << "[SEARCHER] Recharge request sent to paymentQueue for user " << request.user_id << std::endl;
-                        //Print the rechargeRequest data info
-                        std::cout << "[SEARCH] User ID IN PREMIUM SEARCH IN FILE (RechargeRequest sent from user): " << rechargeRequest.user_id << std::endl;
-                        sem_wait(sem);
                         char bufferRece[128];
                         mq_receive(paymentQueueResponse, bufferRece, sizeof(bufferRece), NULL);
                         std::cout << "[SEARCHER] Recharge response received from paymentQueue for user " << request.user_id << std::endl;
-                        sem_post(paymentSemaphore);
                         // Receiving a int from the paymentQueue2, printing the message with the rechargeAmount, adding it to the variable premiumBalance and increasing the totalOccurrences
                         int rechargeAmount = *reinterpret_cast<int*>(bufferRece);
                         printf("[SEARCHER] Recharged amount for user : %d\n", rechargeAmount);
@@ -205,36 +200,24 @@ void Search::PremiumUserSearch(int numThreads) {
         return;
     }
 
-    mqd_t paymentQueueResponse = mq_open(PAYMENT_RESPONSE_QUEUE_NAME, O_WRONLY | O_CREAT, 0644, &payment_attr);
+    std::string queueName = "/search_payment_response_" + std::to_string(request.user_id);
+    mqd_t paymentQueueResponse = mq_open(queueName.c_str(), O_RDWR | O_CREAT, 0644, &payment_attr);
     if (paymentQueueResponse == -1) {
-        perror("mq_open_paymentQueueResponse");
+        perror(("mq_open_" + queueName).c_str());
         return;
-    }
+    }   
 
 
     premiumBalance = request.balance;
     std::vector<std::thread> threads;
 
-    std::string semaphore_name = "/semaphore_search_" + std::to_string(request.user_id);
-
-    sem_t *user_search_semaphore = sem_open(semaphore_name.c_str(), O_CREAT, 0644, 1);
-    if (user_search_semaphore == SEM_FAILED) {
-        std::cerr << "Error al crear el semáforo: " << strerror(errno) << std::endl;
-        return;
-    }
-
    for (int i = 0; i < numThreads; ++i) {
         // Pasar el semáforo a cada hilo
-        threads.push_back(std::thread(&Search::PremiumSearchInFile, this, files[i], user_search_semaphore, paymentQueue, paymentQueueResponse));
+        threads.push_back(std::thread(&Search::PremiumSearchInFile, this, files[i], paymentQueue, paymentQueueResponse));
     }
     for (auto& th : threads) {
         th.join();
     }
-
-    // Cerrar el semáforo después de usarlo
-    sem_close(user_search_semaphore);
-    // Eliminar el semáforo
-    sem_unlink(semaphore_name.c_str());
 
 
 }

@@ -30,9 +30,6 @@ int SistemaDePago::procesarPago() {
 
     int payment = distr(gen);
 
-    // Simulate payment processing time
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-
     return payment;
 }
 

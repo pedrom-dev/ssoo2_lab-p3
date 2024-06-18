@@ -20,7 +20,6 @@ public:
     static mqd_t paymentQueue; // Declaración de la cola de mensajes de pago
     static mqd_t paymentQueueResponse; // Declaración de la cola de mensajes de pago
     std::vector<Ocurrence> ocurrencias;
-    sem_t* paymentSemaphore;
     
     Search();
     Search(searchRequest_t request);
@@ -31,7 +30,7 @@ public:
     void GenerateSearchResultsFile(int user_id, const std::vector<Ocurrence> &ocurrences, const char* keyword);
     void UnlimitedSearchInFile(const std::string &file, const std::string &keyword);
     void PremiumUserSearch(int numThreads);
-    void PremiumSearchInFile(const std::string& file, sem_t* sem, mqd_t paymentQueue, mqd_t paymentQueueResponse);
+    void PremiumSearchInFile(const std::string& file, mqd_t paymentQueue, mqd_t paymentQueueResponse);
     
 };
 

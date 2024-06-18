@@ -23,7 +23,7 @@
 
 std::vector<std::string> message_queues;
 std::mutex message_queues_mutex;
-int numUsers = 2;
+int numUsers = 5;
 
 void user_running(int numThreads, std::string keyword, User user, mqd_t searcher_mq) {
 
@@ -71,15 +71,6 @@ void user_running(int numThreads, std::string keyword, User user, mqd_t searcher
             break;
     }
 
-    // Print the searchRequest data (all fields) sent
-    std::cout << "[USER " << user.getId() << "] Search Request Data:\n"
-          << "User ID: " << searchRequest.user_id << "\n"
-          << "User Type: " << UserTypeString << "\n"
-          << "Keyword: " << searchRequest.keyword << "\n"
-          << "Balance: " << searchRequest.balance << "\n"
-          << "Number of Threads: " << searchRequest.numThreads << "\n"
-          << "Queue Name: " << searchRequest.queue_name << std::endl;
-
     mq_send(searcher_mq, (char *)&searchRequest, sizeof(searchRequest), 0);
     std::cout << "[USER " << user.getId() << "] Request sent to the searcher for user " << user.getId() << std::endl;
 
@@ -90,15 +81,8 @@ void user_running(int numThreads, std::string keyword, User user, mqd_t searcher
         perror("mq_receive_user_running_user_mq");
         return;
     }
-    // Print received bytes
-    std::cout << "[USER " << user.getId() << "] Bytes read AAA: " << bytes_read << std::endl;
-    std::cout << "[USER " << user.getId() << "] Searcher response received for user " << user.getId() << std::endl;
-    // Print the response message from the searcher (the number of ocurrences of the keyword in the dictionary)
+
     searchResponse_t* searchResponse = reinterpret_cast<searchResponse_t*>(response);
-    //Print all the response
-    std::cout << "[USER " << user.getId() << "] Searcher response: " << searchResponse->ocurrences << std::endl;
-    std::cout << "[USER " << user.getId() << "] Searcher response: " << searchResponse->user_id << std::endl;
-    std::cout << "[USER " << user.getId() << "] Searcher response: " << searchResponse->balance << std::endl;
 
     user.setBalance(searchResponse->balance);
 }
@@ -109,7 +93,7 @@ int user_generator(unsigned int n_users) {
     std::uniform_int_distribution<> dis(1, 5);
     std::uniform_int_distribution<> disBalance(20, 30); // Para saldo entre 20 y 50
     std::uniform_int_distribution<> disType(0, 2); // Para tipo de usuario entre 0 y 2
-    std::uniform_int_distribution<> disThreads(1, 5); // Para tipo de usuario entre 0 y 2
+    std::uniform_int_distribution<> disThreads(1, 5);
     std::vector<std::thread> userThreads;
     mqd_t searcher_mq;
     mqd_t searcher_response_mq;
@@ -135,6 +119,8 @@ int user_generator(unsigned int n_users) {
     }
 
     std::uniform_int_distribution<> disDictionary(0, dictionary.size() - 1); // Distribución para índices de diccionario
+
+    std::cout << "[USER-GENERATOR] Generating " << n_users << " users with random balance, type, numThreads and keyword" << std::endl;
 
     for (int i = 0; i < n_users; ++i) {
         int tiempoEspera = dis(gen);
@@ -165,11 +151,9 @@ int user_generator(unsigned int n_users) {
         
 
         User user(i, balance, userType);
-        // Print the user information with printf function
-        printf("User %d created with balance %d and type %d\n", i, balance, type);
-        //Print de keyword from dictionary chosen
-        std::cout << "Keyword: " << keyword << std::endl;
-        
+        // Print the user info (id, balance, type, numThreads, keyword). All in one line and starting with [USER-GENERATOR]
+        std::cout << "[USER-GENERATOR] User ID: " << user.getId() << " Balance: " << user.getBalance() << " NumThreads: " << numThreads << " Keyword: " << keyword << std::endl;       
+
         userThreads.push_back(std::thread(user_running, numThreads, keyword, user, searcher_mq));
 
     }
@@ -182,16 +166,11 @@ int user_generator(unsigned int n_users) {
 }
 
 /*Function that encapsulate the process of creating and running the payment process. The objetive is delete the code in main function that manages the payment system and put it here*/
-int running_payment_process(mqd_t payment_request_mq, mqd_t payment_response_mq) {
+int running_payment_process() {
     /*Setting the payments msg queues*/
     /*Create semaphore that makes the system payment waits until the search tell him he read the response*/
     //Print que el running payment process esta funcionando ya
     std::cout << "[PAYMENT SYSTEM] Payment process started" << std::endl;
-    sem_t* payment_sem = sem_open("/semaphore_payment", O_CREAT, 0644, 0);
-    if (payment_sem == SEM_FAILED) {
-        std::cerr << "Error al crear el semáforo: " << strerror(errno) << std::endl;
-        return -1;
-    }
 
     // Create a process to handle the payment requests using the static instance of the SistemaDePago class
     pid_t paymentPid = fork();
@@ -206,31 +185,50 @@ int running_payment_process(mqd_t payment_request_mq, mqd_t payment_response_mq)
         ssize_t bytes_read_payment;
         char paymentBuffer[128];
         SistemaDePago* sistemaDePago = SistemaDePago::getInstance();
+
+        struct mq_attr payment_attr;
+        payment_attr.mq_flags = 0;
+        payment_attr.mq_maxmsg = 10;
+        payment_attr.mq_msgsize = 128;
+        payment_attr.mq_curmsgs = 0;
+
+        mqd_t payment_request_mq;
+        payment_request_mq = mq_open(PAYMENT_QUEUE_NAME, O_CREAT | O_RDONLY, 0644, &payment_attr);
+        if(payment_request_mq == -1) {
+            perror("mq_open_payment_request_main");
+            return -1;
+        }
+
         // Loop waiting requests for the queue Payment to process them
         while (true) {
             bytes_read_payment = mq_receive(payment_request_mq, (char *)&paymentBuffer, 128, NULL);
             // Create a pointer to the payment request struct
             rechargeRequest_t* payRequest = reinterpret_cast<rechargeRequest_t*>(paymentBuffer);
-            //Print the payRequest info
-            std::cout << "[PAYMENT SYSTEM] User ID: " << payRequest->user_id << std::endl;
-            std::string semaphoreName = "/semaphore_search_" + std::to_string(payRequest->user_id);
-            sem_t* sem = sem_open(semaphoreName.c_str(), O_CREAT, 0644, 1);
-            // Print that the payment system has received a payment request from the searcher for the user id
+
+            struct mq_attr payment_attr;
+            payment_attr.mq_flags = 0;
+            payment_attr.mq_maxmsg = 10;
+            payment_attr.mq_msgsize = 128;
+            payment_attr.mq_curmsgs = 0;
+
+            std::string queueName = "/search_payment_response_" + std::to_string(payRequest->user_id);
+            mqd_t paymentQueueResponse = mq_open(queueName.c_str(), O_WRONLY | O_CREAT, 0644, &payment_attr);
+            if (paymentQueueResponse == -1) {
+                perror(("mq_open_" + queueName).c_str());
+               return -1;
+            } 
 
             if (bytes_read_payment > 0) {
                 // Print that the payment system has received a payment request from the searcher for the user id
                 std::cout << "[PAYMENT] Payment request received from the searcher for user " << payRequest->user_id << std::endl;
                 int payment = sistemaDePago->procesarPago();
                 // Print the payment success message with the user id
-                printf("Payment processed for user %d\n", payRequest->user_id);
+                printf("Payment processed for user %d with amount %d\n", payRequest->user_id, payment);
                 // Send the payment confirmation to the Searcher (the confirmation is just to send int 1
-                mq_send(payment_response_mq, (char *)&payment, sizeof(int), 0);
+                mq_send(paymentQueueResponse, (char *)&payment, sizeof(int), 0);
                 // Signal to the semaphore that the payment has been processed
-                sem_post(sem);
 
             }
-
-            sem_wait(payment_sem);
         }
     }
 }
@@ -272,12 +270,11 @@ void handle_sigint(int sig)
         printf("Queue %s unlinked\n", queue_name.c_str());
     }
 
-    // Unlink the semaphores
-    sem_unlink("/semaphore_payment");
+    // Unlink the message queues
     for (int i = 0; i < numUsers; i++) {
-        std::string semaphoreName = "/semaphore_search_" + std::to_string(i);
-        sem_unlink(semaphoreName.c_str());
-        printf("Semaphore %s unlinked\n", semaphoreName.c_str());
+        std::string queueName = "/search_payment_response_" + std::to_string(i);
+        mq_unlink(queueName.c_str());
+        printf("Message queue %s unlinked\n", queueName.c_str());
     }
 
     exit(0);
@@ -286,29 +283,8 @@ void handle_sigint(int sig)
 int main() {
     signal(SIGINT, handle_sigint);
 
-    mqd_t payment_request_mq;
-    mqd_t payment_response_mq;
-
-    struct mq_attr payment_attr;
-    payment_attr.mq_flags = 0;
-    payment_attr.mq_maxmsg = 10;
-    payment_attr.mq_msgsize = 128;
-    payment_attr.mq_curmsgs = 0;
-
-    payment_request_mq = mq_open(PAYMENT_QUEUE_NAME, O_CREAT | O_WRONLY, 0644, &payment_attr);
-    if(payment_request_mq == -1) {
-        perror("mq_open_payment_request_main");
-        return -1;
-    }
-
-    payment_response_mq = mq_open(PAYMENT_RESPONSE_QUEUE_NAME, O_CREAT | O_WRONLY, 0644, &payment_attr);
-    if(payment_response_mq == -1) {
-        perror("mq_open_payment_response_main");
-        return -1;
-    }
-
     running_search_process();
-    running_payment_process(payment_request_mq, payment_response_mq);
+    running_payment_process();
     // Hacer que el proceso aqui se duerma durante 5 segundos
     std::this_thread::sleep_for(std::chrono::seconds(10));
     user_generator(numUsers);
