@@ -11,6 +11,7 @@
 #include <fcntl.h> // Include the necessary header file for using the O_RDONLY flag
 #include <cstring>
 #include <iostream>
+#include "log.h"
 
 Searcher* Searcher::instance = nullptr;
 std::mutex Searcher::bufferMutex;
@@ -45,21 +46,13 @@ void Searcher::receiveRequests() {
         perror("mq_open_receive_request_searcher");
         return;
     }
-    printf("[SEARCHER-RECEIVER] Receiving service started\n");
+    log("[SEARCHER-RECEIVER] Receiving service started");
     ssize_t bytes_read; 
         while (running) {
             bytes_read = mq_receive(mq, buffer, 1024, NULL);
             searchRequest_t* searchRequestR = reinterpret_cast<searchRequest_t*>(buffer);
-            //Print all the info from searchRequestR
-            std::cout << "User IDaa: " << searchRequestR->user_id << std::endl;
-            std::cout << "Balanceaa: " << searchRequestR->balance << std::endl;
-            std::cout << "NumThreadsaa: " << searchRequestR->numThreads << std::endl;
-            std::cout << "Queue nameaa: " << searchRequestR->queue_name << std::endl;
-            
-            //print the bytes read
-            std::cout << "Bytes read in receiveRequests: " << bytes_read << std::endl;
-
-                                
+            log("[SEARCHER-RECEIVER] Request received from user " + std::to_string(searchRequestR->user_id));
+                               
             if (bytes_read > 0) {
                 std::lock_guard<std::mutex> lock(bufferMutex); 
                 switch (searchRequestR->type)
@@ -89,7 +82,7 @@ void Searcher::receiveRequests() {
 }
 
 void Searcher::processRequests() {
-    printf("[SEARCHER-PROCESSER] Processing service started\n");
+    log("[SEARCHER-PROCESSER] Processing service started");
         while (running) {
             std::lock_guard<std::mutex> lock(bufferMutex);
             if (!PremiumRequestBuffer.empty() && (premiumCount < premiumWeight || FreeRequestBuffer.empty())) {
@@ -109,16 +102,15 @@ void Searcher::processRequests() {
                         exit(1);
                     }
 
-
-                    printf("[SEARCHER-PROCESSER] Processing PREMIUM request for user %d\n", req.user_id);
+                    log("[SEARCHER-PROCESSER] Processing PREMIUM request for user " + std::to_string(req.user_id));
                     // Now check if the user is PremiumUserIlimited or PremiumUser
                     if (req.type == UserType::PREMIUM) {
                         Search* search = new Search(req);
 
                         search->PremiumUserSearch(req.numThreads);
-                        printf("[SEARCHER-PROCESSER] Premium search finished for user %d \n", req.user_id);
+                        log("[SEARCHER-PROCESSER] Premium search finished for user " + std::to_string(req.user_id));
                         search->GenerateSearchResultsFile(req.user_id, search->ocurrencias, req.keyword);
-                        printf("[SEARCHER-PROCESSER] Search results file generated for user %d\n", req.user_id);
+                        log("[SEARCHER-PROCESSER] Search results file generated for user " + std::to_string(req.user_id));
                         // Send the response to the user with a searchResponse_t struct
                         searchResponse_t response;
                         response.user_id = req.user_id;
@@ -126,15 +118,15 @@ void Searcher::processRequests() {
                         response.balance = req.balance;
 
                         mq_send(user_mq, reinterpret_cast<const char*>(&response), sizeof(searchResponse_t), 0);
-                        printf("[SEARCHER-PROCESSER] Response sent to user %d\n", req.user_id);
+                        log("[SEARCHER-PROCESSER] Response sent to user " + std::to_string(req.user_id));
                         
                         
                     } else {
                         Search* search = new Search(req);
                         search->unlimitedUserSearch(req.numThreads);
-                        printf("[SEARCHER-PROCESSER] Premium unlimited search finished\n");
+                        log("[SEARCHER-PROCESSER] Premium unlimited search finished for user " + std::to_string(req.user_id));
                         search->GenerateSearchResultsFile(req.user_id, search->ocurrencias, req.keyword);
-                        std::cout << "[SEARCHER-PROCESSER] Search results file generated for user " << req.user_id << std::endl;
+                        log("[SEARCHER-PROCESSER] Search results file generated for user " + std::to_string(req.user_id));
                         // Send the response to the user with a searchResponse_t struct
                         searchResponse_t response;
                         response.user_id = req.user_id;
@@ -142,7 +134,7 @@ void Searcher::processRequests() {
                         response.balance = req.balance;
 
                         mq_send(user_mq, reinterpret_cast<const char*>(&response), sizeof(searchResponse_t), 0);
-                        std::cout << "[SEARCHER-PROCESSER] Response sent to user " << req.user_id << std::endl;
+                        log("[SEARCHER-PROCESSER] Response sent to user " + std::to_string(req.user_id));
 
                     }
                    
@@ -162,12 +154,12 @@ void Searcher::processRequests() {
 
                     // Open the queue to reply to the user
                     mqd_t user_mq = mq_open(req.queue_name, O_WRONLY);
-                    printf("[SEARCHER-PROCESSER] Processing free request for user %d \n", req.user_id);
+                    log("[SEARCHER-PROCESSER] Processing free request for user " + std::to_string(req.user_id));
                     Search* search = new Search(req);
                     search->FreeUserSearch(NUM_THREADS_FREE_SEARCH);
-                    printf("[SEARCHER-PROCESSER] Free search finished for user \n", req.user_id);
+                    log("[SEARCHER-PROCESSER] Free search finished for user " + std::to_string(req.user_id));
                     search->GenerateSearchResultsFile(req.user_id, search->ocurrencias, req.keyword);
-                    printf("[SEARCHER-PROCESSER] Search results file generated for user %d\n", req.user_id);
+                    log("[SEARCHER-PROCESSER] Search results file generated for user " + std::to_string(req.user_id));
                     // Send the response to the user with a searchResponse_t struct
                     searchResponse_t response;
                     response.user_id = req.user_id;
@@ -175,7 +167,7 @@ void Searcher::processRequests() {
                     response.balance = req.balance;
 
                     mq_send(user_mq, reinterpret_cast<const char*>(&response), sizeof(searchResponse_t), 0);
-                    printf("[SEARCHER-PROCESSER] Response sent to user %d\n", req.user_id);
+                    log("[SEARCHER-PROCESSER] Response sent to user " + std::to_string(req.user_id));
 
                     exit(0);
                                                                        

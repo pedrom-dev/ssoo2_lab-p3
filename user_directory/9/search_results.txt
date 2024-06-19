@@ -1,0 +1,2 @@
+[1830811200 :: assets/books/book1.txt] :: 5277 :: el caballo campe�n
+[1830811200 :: assets/books/book1.txt] :: 6252 :: el caballo detr�s

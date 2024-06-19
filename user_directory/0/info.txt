@@ -1,0 +1,7 @@
+User ID: 0
+Keyword: bonito
+Número de ocurrencias: 5
+Balance final: 29
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795599
+Tiempo transcurrido: 3.0425 segundos

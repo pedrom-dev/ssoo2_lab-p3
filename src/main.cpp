@@ -6,10 +6,10 @@
 #include "utils.h"
 #include "User.h"
 #include "definitions.h"
-#include <cstring> // Include the necessary header file for the strcpy function
-#include <csignal> // Include the necessary header file for the signal function
-#include <mqueue.h> // Include the necessary header file for the mq_open function
-#include <fcntl.h> // Include the necessary header file for the O_CREAT flag
+#include <cstring> 
+#include <csignal> 
+#include <mqueue.h>
+#include <fcntl.h>
 #include <random>
 #include <chrono>
 #include <vector>
@@ -19,15 +19,20 @@
 #include "SistemaDePago.h"
 #include <fstream>
 #include <semaphore.h>
-#include <iostream> // Include the necessary header file
+#include <iostream> 
+#include <stdexcept> 
+#include <mutex>
+#include "log.h"
 
 std::vector<std::string> message_queues;
 std::mutex message_queues_mutex;
-int numUsers = 5;
+int numUsers = 15;
 
 void user_running(int numThreads, std::string keyword, User user, mqd_t searcher_mq) {
 
-    std::cout << "[USER " << user.getId() << "] Starting to work..." << std::endl;
+    log("[USER " + std::to_string(user.getId()) + "] Starting to work...");
+    
+    auto start = std::chrono::high_resolution_clock::now();
 
     // Create a message queue for this user
 
@@ -72,7 +77,7 @@ void user_running(int numThreads, std::string keyword, User user, mqd_t searcher
     }
 
     mq_send(searcher_mq, (char *)&searchRequest, sizeof(searchRequest), 0);
-    std::cout << "[USER " << user.getId() << "] Request sent to the searcher for user " << user.getId() << std::endl;
+    log("[USER " + std::to_string(user.getId()) + "] Request sent to the searcher for user " + std::to_string(user.getId()));
 
     char response[2048];
     ssize_t bytes_read;
@@ -85,6 +90,30 @@ void user_running(int numThreads, std::string keyword, User user, mqd_t searcher
     searchResponse_t* searchResponse = reinterpret_cast<searchResponse_t*>(response);
 
     user.setBalance(searchResponse->balance);
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = end-start;
+
+    // Crea el directorio para el usuario si no existe
+    std::string dir_path = "user_directory/" + std::to_string(user.getId());
+    mkdir(dir_path.c_str(), 0777);
+
+    // Abre el archivo en el directorio del usuario
+    std::ofstream outfile;
+    std::string file_path = dir_path + "/info.txt";
+    outfile.open(file_path, std::ios_base::app);
+
+    // Escribe en el archivo
+    outfile << "User ID: " << user.getId() << "\n";
+    outfile << "Keyword: " << keyword << "\n";  
+    outfile << "Número de ocurrencias: " << searchResponse->ocurrences << "\n";
+    outfile << "Balance final: " << searchResponse->balance << "\n";
+    outfile << "Tiempo de inicio: " << std::chrono::duration_cast<std::chrono::seconds>(start.time_since_epoch()).count() << "\n";
+    outfile << "Tiempo de fin: " << std::chrono::duration_cast<std::chrono::seconds>(end.time_since_epoch()).count() << "\n";
+    outfile << "Tiempo transcurrido: " << diff.count() << " segundos\n";
+
+    outfile.close();
+
 }
 
 int user_generator(unsigned int n_users) {
@@ -93,7 +122,11 @@ int user_generator(unsigned int n_users) {
     std::uniform_int_distribution<> dis(1, 5);
     std::uniform_int_distribution<> disBalance(20, 30); // Para saldo entre 20 y 50
     std::uniform_int_distribution<> disType(0, 2); // Para tipo de usuario entre 0 y 2
-    std::uniform_int_distribution<> disThreads(1, 5);
+
+    // En lugar de calcular el número de hilos entre 1 y 5. Haz entre 1 y lo que te devuelva hardwrare_concurrency
+    unsigned int nT = std::thread::hardware_concurrency();
+
+    std::uniform_int_distribution<> disThreads(1, nT);
     std::vector<std::thread> userThreads;
     mqd_t searcher_mq;
     mqd_t searcher_response_mq;
@@ -104,9 +137,13 @@ int user_generator(unsigned int n_users) {
     attr.mq_msgsize = 128;
     attr.mq_curmsgs = 0;
 
-    searcher_mq = mq_open(SEARCHER_QUEUE_NAME, O_CREAT | O_WRONLY, 0644, NULL);
-    if(searcher_mq == -1) {
-        perror("mq_open_user_generator");
+    try {
+        searcher_mq = mq_open(SEARCHER_QUEUE_NAME, O_CREAT | O_WRONLY, 0644, NULL);
+        if(searcher_mq == -1) {
+            throw std::runtime_error("mq_open_user_generator failed");
+        }
+    } catch(const std::exception& e) {
+        std::cerr << e.what() << '\n';
         return -1;
     }
 
@@ -120,8 +157,7 @@ int user_generator(unsigned int n_users) {
 
     std::uniform_int_distribution<> disDictionary(0, dictionary.size() - 1); // Distribución para índices de diccionario
 
-    std::cout << "[USER-GENERATOR] Generating " << n_users << " users with random balance, type, numThreads and keyword" << std::endl;
-
+    log("[USER-GENERATOR] Generating " + std::to_string(n_users) + " users with random balance, type, numThreads and keyword");
     for (int i = 0; i < n_users; ++i) {
         int tiempoEspera = dis(gen);
         int balance = disBalance(gen);
@@ -130,7 +166,7 @@ int user_generator(unsigned int n_users) {
         UserType userType;
 
 
-        switch(1) {
+        switch(type) {
             case 0:
                 userType = UserType::FREE;
                 break;
@@ -152,8 +188,7 @@ int user_generator(unsigned int n_users) {
 
         User user(i, balance, userType);
         // Print the user info (id, balance, type, numThreads, keyword). All in one line and starting with [USER-GENERATOR]
-        std::cout << "[USER-GENERATOR] User ID: " << user.getId() << " Balance: " << user.getBalance() << " NumThreads: " << numThreads << " Keyword: " << keyword << std::endl;       
-
+        log("[USER-GENERATOR] User ID: " + std::to_string(user.getId()) + " Balance: " + std::to_string(user.getBalance()) + " NumThreads: " + std::to_string(numThreads) + " Keyword: " + keyword);
         userThreads.push_back(std::thread(user_running, numThreads, keyword, user, searcher_mq));
 
     }
@@ -167,10 +202,8 @@ int user_generator(unsigned int n_users) {
 
 /*Function that encapsulate the process of creating and running the payment process. The objetive is delete the code in main function that manages the payment system and put it here*/
 int running_payment_process() {
-    /*Setting the payments msg queues*/
-    /*Create semaphore that makes the system payment waits until the search tell him he read the response*/
-    //Print que el running payment process esta funcionando ya
-    std::cout << "[PAYMENT SYSTEM] Payment process started" << std::endl;
+
+    log("[PAYMENT SYSTEM] Payment process started");
 
     // Create a process to handle the payment requests using the static instance of the SistemaDePago class
     pid_t paymentPid = fork();
@@ -193,9 +226,13 @@ int running_payment_process() {
         payment_attr.mq_curmsgs = 0;
 
         mqd_t payment_request_mq;
-        payment_request_mq = mq_open(PAYMENT_QUEUE_NAME, O_CREAT | O_RDONLY, 0644, &payment_attr);
-        if(payment_request_mq == -1) {
-            perror("mq_open_payment_request_main");
+        try {
+            payment_request_mq = mq_open(PAYMENT_QUEUE_NAME, O_CREAT | O_RDONLY, 0644, &payment_attr);
+            if(payment_request_mq == -1) {
+                throw std::runtime_error("mq_open_payment_request_main failed");
+            }
+        } catch(const std::exception& e) {
+            std::cerr << e.what() << '\n';
             return -1;
         }
 
@@ -220,10 +257,10 @@ int running_payment_process() {
 
             if (bytes_read_payment > 0) {
                 // Print that the payment system has received a payment request from the searcher for the user id
-                std::cout << "[PAYMENT] Payment request received from the searcher for user " << payRequest->user_id << std::endl;
+                log("[PAYMENT SYSTEM] Payment request received from the searcher for user " + std::to_string(payRequest->user_id));                 
                 int payment = sistemaDePago->procesarPago();
                 // Print the payment success message with the user id
-                printf("Payment processed for user %d with amount %d\n", payRequest->user_id, payment);
+                log("[PAYMENT SYSTEM] Payment processed for user " + std::to_string(payRequest->user_id) + " with amount " + std::to_string(payment));
                 // Send the payment confirmation to the Searcher (the confirmation is just to send int 1
                 mq_send(paymentQueueResponse, (char *)&payment, sizeof(int), 0);
                 // Signal to the semaphore that the payment has been processed
@@ -243,7 +280,7 @@ int running_search_process() {
         
     } else { // Child process (searcher)
         Searcher* searcher = Searcher::getInstance();
-        printf("[SEARCHER] Searcher process started\n");
+        log("[SEARCHER] Searcher process started");
         std::thread searcherThread([&searcher]() { searcher->receiveRequests(); });
         // Thread with the searcher processRequest method
         std::thread processRequestThread([&searcher]() { searcher->processRequests(); });
@@ -258,7 +295,7 @@ int running_search_process() {
 
 void handle_sigint(int sig) 
 {
-    std::cout << "Caught signal " << sig << std::endl;
+    log("Caught signal " + std::to_string(sig));
     mq_unlink(SEARCHER_QUEUE_NAME);
     mq_unlink(PAYMENT_QUEUE_NAME);
     mq_unlink(PAYMENT_RESPONSE_QUEUE_NAME);
@@ -267,14 +304,14 @@ void handle_sigint(int sig)
     std::lock_guard<std::mutex> lock(message_queues_mutex);
     for (const auto& queue_name : message_queues) {
         mq_unlink(queue_name.c_str());
-        printf("Queue %s unlinked\n", queue_name.c_str());
+        log("Queue " + queue_name + " unlinked");
     }
 
     // Unlink the message queues
     for (int i = 0; i < numUsers; i++) {
         std::string queueName = "/search_payment_response_" + std::to_string(i);
         mq_unlink(queueName.c_str());
-        printf("Message queue %s unlinked\n", queueName.c_str());
+        log("Message queue " + queueName + " unlinked");
     }
 
     exit(0);
@@ -286,12 +323,8 @@ int main() {
     running_search_process();
     running_payment_process();
     // Hacer que el proceso aqui se duerma durante 5 segundos
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    sleep(1);
     user_generator(numUsers);
-    
-    while (true) {};
-
-    std::cout << "Simulación completa. Todos los usuarios han terminado sus actividades." << std::endl;
     
     return 0;
 }

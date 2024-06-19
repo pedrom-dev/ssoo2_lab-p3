@@ -1,0 +1,7 @@
+User ID: 12
+Keyword: botella
+Número de ocurrencias: 1
+Balance final: 28
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795597
+Tiempo transcurrido: 1.01747 segundos

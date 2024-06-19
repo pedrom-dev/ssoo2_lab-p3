@@ -1,0 +1,7 @@
+User ID: 6
+Keyword: buzón
+Número de ocurrencias: 0
+Balance final: 30
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795596
+Tiempo transcurrido: 0.0631801 segundos

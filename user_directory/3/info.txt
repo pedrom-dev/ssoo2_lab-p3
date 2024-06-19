@@ -1,0 +1,7 @@
+User ID: 3
+Keyword: si
+Número de ocurrencias: 988
+Balance final: 20
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795861
+Tiempo transcurrido: 265.052 segundos

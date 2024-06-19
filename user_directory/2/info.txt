@@ -1,0 +1,7 @@
+User ID: 2
+Keyword: me
+Número de ocurrencias: 100
+Balance final: 20
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795624
+Tiempo transcurrido: 28.0057 segundos

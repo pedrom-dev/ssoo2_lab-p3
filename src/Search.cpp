@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <sys/mman.h> // Include the <sys/mman.h> header
 #include <semaphore.h>
+#include "log.h"
 
 std::atomic<int> totalOccurrences(0); // Variable global para contar las ocurrencias totales;
 std::atomic<int> premiumBalance(0);
@@ -36,7 +37,7 @@ Search::Search(searchRequest_t request) {
 }
 
 void Search::FreeUserSearch(int numThreads) {
-    printf("[SEARCHER] Free user search for user %d started\n", request.user_id);
+    log("[SEARCHER] Free user search for user " + std::to_string(request.user_id) + " started");
 
     std::vector<std::thread> threads;
     for (int i = 0; i < numThreads; ++i) {
@@ -49,7 +50,11 @@ void Search::FreeUserSearch(int numThreads) {
 }
 
 void Search::FreeSearchInFile(const std::string& file, searchRequest_t request) {
-    printf("[SEARCHER] Thread (%d) for user %d searching in file %s\n", std::this_thread::get_id(), request.user_id, file.c_str());
+    std::ostringstream oss;
+    oss << std::this_thread::get_id();
+    std::string thread_id = oss.str();
+
+    log("[SEARCHER] Thread (" + thread_id + ") for user " + std::to_string(request.user_id) + " searching in file " + file);
     std::ifstream inFile(file);
     if (!inFile) {
         std::cerr << "Error al abrir el archivo: " << file << std::endl;
@@ -65,11 +70,12 @@ void Search::FreeSearchInFile(const std::string& file, searchRequest_t request) 
         bool isFirstWord = true;  // Para manejar el primer caso donde no hay palabra anterior
         while (iss >> word) {
             if (!isFirstWord && word == std::string(request.keyword)) {
-                printf("[SEARCHER] Ocurrence found for user %d\n", request.user_id);
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                log("[SEARCHER (Free search)] Ocurrence found (" + std::to_string(totalOccurrences.load()) + ") for user " + std::to_string(request.user_id));
                 if (iss >> nextWord) {
                     std::lock_guard<std::mutex> lock(mtx);
                     if (totalOccurrences >= FREE_USER_SEARCH_LIMIT) {
-                        printf("[SEARCHER] Free user search limit reached for user %d\n", request.user_id);
+                        log("[SEARCHER] Free user search limit reached for user " + std::to_string(request.user_id));
                         return; // Si se ha alcanzado el límite, termina la ejecución del hilo
                     }
                     ++totalOccurrences;
@@ -92,7 +98,7 @@ int Search::getTotalOccurrences() {
 
 void Search::unlimitedUserSearch(int numThreads) {
     std::vector<std::thread> threads;
-    printf("[SEARCHER] Unlimited user search started\n");
+    log("[SEARCHER] Unlimited user search started");
     for (int i = 0; i < numThreads; ++i) {
         threads.push_back(std::thread(&Search::FreeSearchInFile, this, files[i], request));
     }
@@ -107,7 +113,11 @@ void Search::unlimitedUserSearch(int numThreads) {
 }
 
 void Search::UnlimitedSearchInFile(const std::string& file, const std::string& keyword) {
-    printf("[SEARCHER] Thread (%d) searching in file %s\n", std::this_thread::get_id(), file.c_str());
+    std::ostringstream oss;
+    oss << std::this_thread::get_id();
+    std::string thread_id = oss.str();
+
+    log("[SEARCHER] Thread (" + thread_id + ") searching in file " + file);
     std::ifstream inFile(file);
     if (!inFile) {
         std::cerr << "Error al abrir el archivo: " << file << std::endl;
@@ -121,9 +131,10 @@ void Search::UnlimitedSearchInFile(const std::string& file, const std::string& k
         bool isFirstWord = true;  // Para manejar el primer caso donde no hay palabra anterior
         while (iss >> word) {
             if (!isFirstWord && word == std::string(request.keyword)) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
                 if (iss >> nextWord) {
                     std::lock_guard<std::mutex> lock(mtx);
-                    printf("[SEARCHER] Ocurrence found for user %d\n", request.user_id);
+                    log("[SEARCHER (Premium Unlimited search)] Ocurrence found (" + std::to_string(totalOccurrences.load()) + ") for user " + std::to_string(request.user_id));
                     ++totalOccurrences;
                     // Registrar la ocurrencia
                     Ocurrence ocurrence = {prevWord, nextWord, lineNum, std::this_thread::get_id(), file};
@@ -139,7 +150,11 @@ void Search::UnlimitedSearchInFile(const std::string& file, const std::string& k
 
 
 void Search::PremiumSearchInFile(const std::string& file, mqd_t paymentQueue, mqd_t paymentQueueResponse) {
-    printf("[SEARCHER] Thread (%d) searching in file %s\n", std::this_thread::get_id(), file.c_str());
+    std::ostringstream oss;
+    oss << std::this_thread::get_id();
+    std::string thread_id = oss.str();
+
+    log("[SEARCHER] Thread (" + thread_id + ") searching in file " + file);
     std::ifstream inFile(file);
     std::string line;
     int lineNum = 0;
@@ -151,34 +166,32 @@ void Search::PremiumSearchInFile(const std::string& file, mqd_t paymentQueue, mq
 
         while (iss >> word) {
             if (!isFirstWord && word == std::string(request.keyword)) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
                 std::lock_guard<std::mutex> lock(mtx);
                 if (iss >> nextWord) {
-                    printf("Ocurrencia encontrada en user %d \n", request.user_id);
-                    printf("[SEARCHER] Premium user balance: %d\n", premiumBalance.load());
+                   log("[SEARCHER (Premium search)] Ocurrence found (" + std::to_string(totalOccurrences.load()) + ") for user " + std::to_string(request.user_id));
                     if (premiumBalance <= 0) {
-                        printf("[SEARCHER] Premium user (%d) balance is 0\n", request.user_id);
+                        log("[SEARCHER (Premium search)] Premium user (" + std::to_string(request.user_id) + ") balance is 0");
                         // Send a rechargeRequest message to the paymentQueue
                         rechargeRequest_t rechargeRequest;
                         rechargeRequest.user_id = request.user_id;
                         mq_send(paymentQueue, (char*)&rechargeRequest, sizeof(rechargeRequest), 0);
-                        std::cout << "[SEARCHER] Recharge request sent to paymentQueue for user " << request.user_id << std::endl;
+                        log("[SEARCHER (Premium search)] Recharge request sent to paymentQueue for user " + std::to_string(request.user_id));
                         char bufferRece[128];
                         mq_receive(paymentQueueResponse, bufferRece, sizeof(bufferRece), NULL);
-                        std::cout << "[SEARCHER] Recharge response received from paymentQueue for user " << request.user_id << std::endl;
+                        log("[SEARCHER (Premium search)] Recharge response received from paymentQueue for user for the amount of " + std::to_string(*reinterpret_cast<int*>(bufferRece)));
                         // Receiving a int from the paymentQueue2, printing the message with the rechargeAmount, adding it to the variable premiumBalance and increasing the totalOccurrences
                         int rechargeAmount = *reinterpret_cast<int*>(bufferRece);
-                        printf("[SEARCHER] Recharged amount for user : %d\n", rechargeAmount);
                         premiumBalance += rechargeAmount;
                     }
                     premiumBalance--;  // Decrease the balance
                     ++totalOccurrences;
-                    printf("%d\n", totalOccurrences.load());
                     Ocurrence ocurrence = {prevWord, nextWord, lineNum, std::this_thread::get_id(), file};
                     ocurrencias.push_back(ocurrence);
                 }
             }
             prevWord = word;
-            isFirstWord = false;  // Después de la primera palabra, actualizar la bandera
+            isFirstWord = false; 
         }
         ++lineNum;
     }
@@ -186,7 +199,7 @@ void Search::PremiumSearchInFile(const std::string& file, mqd_t paymentQueue, mq
 
 
 void Search::PremiumUserSearch(int numThreads) {
-    printf("[SEARCHER] Premium user search started for user \n", request.user_id);
+    log("[SEARCHER] Premium user search started for user " + std::to_string(request.user_id));
 
     struct mq_attr payment_attr;
     payment_attr.mq_flags = 0;

@@ -1,0 +1,7 @@
+User ID: 9
+Keyword: caballo
+Número de ocurrencias: 2
+Balance final: 29
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795598
+Tiempo transcurrido: 2.02926 segundos

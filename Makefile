@@ -16,7 +16,7 @@ obj/%.o: src/%.cpp
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -rf obj bin user_directory/*
+	rm -rf obj bin user_directory/* log.txt
 
 run:
 	./$(TARGET)

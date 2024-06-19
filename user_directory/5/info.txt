@@ -1,0 +1,7 @@
+User ID: 5
+Keyword: hacer
+Número de ocurrencias: 754
+Balance final: 20
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795788
+Tiempo transcurrido: 192.067 segundos

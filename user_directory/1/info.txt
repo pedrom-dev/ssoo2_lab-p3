@@ -1,0 +1,7 @@
+User ID: 1
+Keyword: brazo
+Número de ocurrencias: 61
+Balance final: 23
+Tiempo de inicio: 1718795596
+Tiempo de fin: 1718795647
+Tiempo transcurrido: 51.0252 segundos
