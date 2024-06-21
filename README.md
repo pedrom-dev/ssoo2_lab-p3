@@ -196,7 +196,7 @@ int SistemaDePago::procesarPago()
 ```
 User::User(int id, int balance, UserType type)
 ```
--Es un constructor parametrizado que inicializa un objeto User con un identificador (id), un saldo (balance) y un tipo de usuario (type).
+- Es un constructor parametrizado que inicializa un objeto User con un identificador (id), un saldo (balance) y un tipo de usuario (type).
 
 **Métodos Getters y Setters**
 
